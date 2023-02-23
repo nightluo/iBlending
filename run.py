@@ -5,15 +5,12 @@ import torch.optim as optim
 from PIL import Image
 from skimage.io import imsave
 from torchvision.utils import save_image
-from utils import compute_gt_gradient, make_canvas_mask, numpy2tensor, laplacian_filter_tensor, \
-                  MeanShift, Vgg16, gram_matrix
+from utils import compute_gt_gradient, make_canvas_mask, numpy2tensor, laplacian_filter_tensor, MeanShift, Vgg16, gram_matrix
 import argparse
 import pdb
 import os
 import imageio.v2 as iio
 import torch.nn.functional as F
-
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--source_file', type=str, default='data/1_source.png', help='path to the source image')
@@ -29,10 +26,7 @@ parser.add_argument('--num_steps', type=int, default=1000, help='Number of itera
 parser.add_argument('--save_video', type=bool, default=False, help='save the intermediate reconstruction process')
 opt = parser.parse_args()
 
-
 os.makedirs(opt.output_dir, exist_ok = True)
-
-
 
 ###################################
 ########### First Pass ###########
@@ -54,17 +48,23 @@ x_start = opt.x; y_start = opt.y # blending location
 grad_weight = 1e4; style_weight = 1e4; content_weight = 1; tv_weight = 1e-6
 
 # Load Images
+# 源图像，提供前景物体
 source_img = np.array(Image.open(source_file).convert('RGB').resize((ss, ss)))
+# 目标图像，用于粘贴前景物体
 target_img = np.array(Image.open(target_file).convert('RGB').resize((ts, ts)))
+# 灰度mask图像，用于提取前景物体
 mask_img = np.array(Image.open(mask_file).convert('L').resize((ss, ss)))
+print(f"mask_img:{mask_img}")
 mask_img[mask_img>0] = 1
 
 # Make Canvas Mask
+# 找到目标图像上粘贴的位置，并展开画布
 canvas_mask = make_canvas_mask(x_start, y_start, target_img, mask_img)
 canvas_mask = numpy2tensor(canvas_mask, gpu_id)
 canvas_mask = canvas_mask.squeeze(0).repeat(3,1).view(3,ts,ts).unsqueeze(0)
 
 # Compute Ground-Truth Gradients
+# 计算梯度
 gt_gradient = compute_gt_gradient(x_start, y_start, source_img, target_img, mask_img, gpu_id)
 
 # Convert Numpy Images Into Tensors
@@ -97,10 +97,13 @@ while run[0] <= num_steps:
     
     def closure():
         # Composite Foreground and Background to Make Blended Image
+        # 合并前景和后景
         blend_img = torch.zeros(target_img.shape).to(gpu_id)
+        # 将target中mask对应位置掏空，粘贴mask前景
         blend_img = input_img*canvas_mask + target_img*(canvas_mask-1)*(-1) 
         
         # Compute Laplacian Gradient of Blended Image
+        # 计算梯度
         pred_gradient = laplacian_filter_tensor(blend_img, gpu_id)
         
         # Compute Gradient Loss

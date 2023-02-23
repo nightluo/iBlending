@@ -27,7 +27,9 @@ def numpy2tensor(np_array, gpu_id):
 
 def make_canvas_mask(x_start, y_start, target_img, mask):
     canvas_mask = np.zeros((target_img.shape[0], target_img.shape[1]))
+    # print(f"canvas_mask:{len(canvas_mask[0])}")
     canvas_mask[int(x_start-mask.shape[0]*0.5):int(x_start+mask.shape[0]*0.5), int(y_start-mask.shape[1]*0.5):int(y_start+mask.shape[1]*0.5)] = mask
+    # print(f"canvas_mask:{len(canvas_mask[0])}")
     return canvas_mask
 
 def laplacian_filter_tensor(img_tensor, gpu_id):
