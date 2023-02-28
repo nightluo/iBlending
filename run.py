@@ -14,17 +14,18 @@ import torch.nn.functional as F
 import utils
 
 parser = argparse.ArgumentParser()
-# parser.add_argument('--source_file', type=str, default='/mnt/data/luoyan/road/ib/source/153.png', help='path to the source image')
-# parser.add_argument('--target_root', type=str, default='/mnt/data/luoyan/road/track_v2/dataset/', help='path to the target data')
-# parser.add_argument('--target_img_name', type=str, default='4302001204000063.png', help='path to the target image')
-# parser.add_argument('--target_json_name', type=str, default='4302001204000063.json', help='path to the target image json')
-# parser.add_argument('--output_dir', type=str, default='./results/153_4302001204000063', help='path to output')
 
-parser.add_argument('--source_file', type=str, default='/mnt/data/luoyan/road/ib/source/144.png', help='path to the source image')
+# parser.add_argument('--source_file', type=str, default='/mnt/data/luoyan/road/ib/source/144.png', help='path to the source image')
+# parser.add_argument('--target_root', type=str, default='/mnt/data/luoyan/road/track_v2/dataset/', help='path to the target data')
+# parser.add_argument('--target_img_name', type=str, default='4317021204084901.png', help='path to the target image')
+# parser.add_argument('--target_json_name', type=str, default='4317021204084901.json', help='path to the target image json')
+# parser.add_argument('--output_dir', type=str, default='./results/144_4317021204084901_v2', help='path to output')
+
+parser.add_argument('--source_file', type=str, default='/mnt/data/luoyan/road/ib/source/95.png', help='path to the source image')
 parser.add_argument('--target_root', type=str, default='/mnt/data/luoyan/road/track_v2/dataset/', help='path to the target data')
-parser.add_argument('--target_img_name', type=str, default='4317021204084901.png', help='path to the target image')
-parser.add_argument('--target_json_name', type=str, default='4317021204084901.json', help='path to the target image json')
-parser.add_argument('--output_dir', type=str, default='./results/144_4317021204084901_v2', help='path to output')
+parser.add_argument('--target_img_name', type=str, default='4313061204026D01.png', help='path to the target image')
+parser.add_argument('--target_json_name', type=str, default='4313061204026D01.json', help='path to the target image json')
+parser.add_argument('--output_dir', type=str, default='./results_box/95_4313061204026D01', help='path to output')
 
 parser.add_argument('--ss', type=int, default=50, help='source image size')
 parser.add_argument('--ts', type=int, default=299, help='target image size')
@@ -43,7 +44,6 @@ os.makedirs(opt.output_dir, exist_ok = True)
 
 # Inputs
 source_file = opt.source_file
-# target_file = opt.target_file
 target_img_name = opt.target_img_name
 target_file = os.path.join(opt.target_root, target_img_name)
 target_json_name = opt.target_json_name
@@ -73,10 +73,6 @@ if y_start < y_center:
 else:
     y_start -= ss // 2
 
-# print(x_start, y_start)
-# x_start = opt.x
-# y_start = opt.y
-
 # Default weights for loss functions in the first pass
 grad_weight = 1e4; style_weight = 1e4; content_weight = 1; tv_weight = 1e-6
 
@@ -87,7 +83,6 @@ imsave(os.path.join(opt.output_dir, 'source_img.png'), source_img.astype(np.uint
 target_img = np.array(Image.open(target_file).convert('RGB').resize((ts, ts)))
 imsave(os.path.join(opt.output_dir, 'target_img.png'), target_img.astype(np.uint8))
 
-# mask_img = np.array(Image.open(mask_file).convert('L').resize((ss, ss)))
 mask_img = utils.get_mask(source_file, ss)
 imsave(os.path.join(opt.output_dir, 'mask_img.png'), mask_img.astype(np.uint8))
 mask_img[mask_img > 0 ] = 1
@@ -227,32 +222,21 @@ num_steps = opt.num_steps
 
 first_pass_img = np.array(Image.open(first_pass_img_file).convert('RGB').resize((ss, ss)))
 
-# first_pass_mask = np.zeros((ss, ss))
-# x1, x2, y1, y2 = int(x_start-ss*0.5), int(x_start+ss*0.5), int(y_start-ss*0.5), int(y_start+ss*0.5)
-# first_pass_mask = first_pass_img[x1:x2, y1:y2]
-
 target_img = np.array(Image.open(target_file).convert('RGB').resize((ts, ts)))
 
-# first_pass_mask = torch.from_numpy(first_pass_mask).unsqueeze(0).transpose(1,3).transpose(2,3).float().to(gpu_id)
 first_pass_img = torch.from_numpy(first_pass_img).unsqueeze(0).transpose(1,3).transpose(2,3).float().to(gpu_id)
 
 target_img = torch.from_numpy(target_img).unsqueeze(0).transpose(1,3).transpose(2,3).float().to(gpu_id)
 
-# first_pass_mask = first_pass_mask.contiguous()
 first_pass_img = first_pass_img.contiguous()
 
 target_img = target_img.contiguous()
 
 # Define LBFGS optimizer
-# def get_input_optimizer(first_pass_mask):
-#     optimizer = optim.LBFGS([first_pass_mask.requires_grad_()])
-#     return optimizer
-
 def get_input_optimizer(first_pass_img):
     optimizer = optim.LBFGS([first_pass_img.requires_grad_()])
     return optimizer
 
-# optimizer = get_input_optimizer(first_pass_mask)
 optimizer = get_input_optimizer(first_pass_img)
 
 print('Optimizing...')
@@ -264,10 +248,7 @@ while run[0] <= num_steps:
         # Compute Loss Loss    
         target_features_style = vgg(mean_shift(target_img))
         target_gram_style = [gram_matrix(y) for y in target_features_style]
-
-        # blend_features_style = vgg(mean_shift(first_pass_mask))
         blend_features_style = vgg(mean_shift(first_pass_img))
-
         blend_gram_style = [gram_matrix(y) for y in blend_features_style]
         style_loss = 0
         for layer in range(len(blend_gram_style)):
@@ -276,7 +257,6 @@ while run[0] <= num_steps:
         style_loss *= style_weight        
         
         # Compute Content Loss
-        # content_features = vgg(mean_shift(first_pass_mask))
         content_features = vgg(mean_shift(first_pass_img))
 
         content_loss = content_weight * mse(blend_features_style.relu2_2, content_features.relu2_2)
@@ -288,9 +268,7 @@ while run[0] <= num_steps:
 
         # Write to output to a reconstruction video 
         if opt.save_video:
-            # foreground = first_pass_mask * canvas_mask
             foreground = first_pass_img * canvas_mask
-
             foreground = (foreground - foreground.min()) / (foreground.max() - foreground.min())
             background = target_img*(canvas_mask-1)*(-1)
             background = background / 255.0
@@ -315,7 +293,6 @@ while run[0] <= num_steps:
 first_pass_img.data.clamp_(0, 255)
 
 # Make the Final Blended Image
-# input_img_np = second_pass_img.transpose(1,3).transpose(1,2).cpu().data.numpy()[0]
 input_img_np = first_pass_img.transpose(1,3).transpose(1,2).cpu().data.numpy()[0]
 
 # Save image from the second pass

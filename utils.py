@@ -51,9 +51,9 @@ def get_points(path):
         box = [w_list[0], w_list[-1], h_list[0], h_list[-1]]
     return box
 
-def get_mask(path, ss):
-    L_img = np.array(Image.open(path).convert('L').resize((ss, ss)))
-    img = np.array(Image.open(path).resize((ss, ss)))
+def get_mask(path):
+    L_img = np.array(Image.open(path).convert('L'))
+    img = np.array(Image.open(path))
     w = img.shape[0]
     h = img.shape[1]
     for x in range(w):
@@ -64,6 +64,20 @@ def get_mask(path, ss):
             else:
                 L_img[x, y] = 255
     return L_img
+
+# def get_mask(path, ss):
+#     L_img = np.array(Image.open(path).convert('L').resize((ss, ss)))
+#     img = np.array(Image.open(path).resize((ss, ss)))
+#     w = img.shape[0]
+#     h = img.shape[1]
+#     for x in range(w):
+#         for y in range(h):
+#             r, g, b, a = img[x ,y]
+#             if a == 0:
+#                 L_img[x, y] = 0
+#             else:
+#                 L_img[x, y] = 255
+#     return L_img
     
     
 def numpy2tensor(np_array, gpu_id):
