@@ -13,10 +13,59 @@ import torch
 from torchvision import models
 from collections import namedtuple
 import time
-
+import json
 import asyncio
+from PIL import Image
+import os
 
+def get_files(root):
+    imgs = []
+    for i in os.listdir(root):
+        path = os.path.join(root, i)
+        if os.path.splitext(path)[1]==".png":
+            imgs.append(i.split('.')[0])
+    imgs_num = len(imgs)
+    print(f"num of imgs:{imgs_num}")
+    return imgs
 
+def get_boxs(root):
+    # read a folder, return the complete path
+    boxs = []
+    for i in os.listdir(root):
+        path = os.path.join(root, i)
+        if os.path.splitext(path)[1]==".json":
+            boxs.append(get_points(path))
+    return boxs
+
+def get_points(path):
+    with open(path, 'r') as f_json:
+        json_data = json.load(f_json)
+        points_list = json_data['shapes'][0]['points']
+        w_list, h_list = [], []
+        for point in points_list:
+            w_list.append(int(point[0]))
+            h_list.append(int(point[1]))
+        w_list.sort()
+        h_list.sort()
+        # w --> x, h --> y
+        box = [w_list[0], w_list[-1], h_list[0], h_list[-1]]
+    return box
+
+def get_mask(path, ss):
+    L_img = np.array(Image.open(path).convert('L').resize((ss, ss)))
+    img = np.array(Image.open(path).resize((ss, ss)))
+    w = img.shape[0]
+    h = img.shape[1]
+    for x in range(w):
+        for y in range(h):
+            r, g, b, a = img[x ,y]
+            if a == 0:
+                L_img[x, y] = 0
+            else:
+                L_img[x, y] = 255
+    return L_img
+    
+    
 def numpy2tensor(np_array, gpu_id):
     if len(np_array.shape) == 2:
         tensor = torch.from_numpy(np_array).unsqueeze(0).float().to(gpu_id)
@@ -27,10 +76,22 @@ def numpy2tensor(np_array, gpu_id):
 
 def make_canvas_mask(x_start, y_start, target_img, mask):
     canvas_mask = np.zeros((target_img.shape[0], target_img.shape[1]))
-    # print(f"canvas_mask:{len(canvas_mask[0])}")
-    canvas_mask[int(x_start-mask.shape[0]*0.5):int(x_start+mask.shape[0]*0.5), int(y_start-mask.shape[1]*0.5):int(y_start+mask.shape[1]*0.5)] = mask
-    # print(f"canvas_mask:{len(canvas_mask[0])}")
+    x1, x2, y1, y2 = int(x_start-mask.shape[0]*0.5), int(x_start+mask.shape[0]*0.5), int(y_start-mask.shape[1]*0.5), int(y_start+mask.shape[1]*0.5)
+    if x1 < 0:
+        x1 = 0
+        x2 = x1 + mask.shape[0]
+    if x2 > target_img.shape[0]:
+        x2 = target_img.shape[0]
+        x1 = x2 - mask.shape[0]
+    if y1 < 0:
+        y1 = 0
+        y2 = y1 + mask.shape[1]
+    if y2 > target_img.shape[1]:
+        y2 = target_img.shape[1]
+        y1 = y2 - mask.shape[1]
+    canvas_mask[x1:x2, y1:y2] = mask
     return canvas_mask
+
 
 def laplacian_filter_tensor(img_tensor, gpu_id):
 
@@ -52,7 +113,6 @@ def laplacian_filter_tensor(img_tensor, gpu_id):
     
 
 def compute_gt_gradient(x_start, y_start, source_img, target_img, mask, gpu_id):
-    
     # compute source image gradient
     source_img_tensor = torch.from_numpy(source_img).unsqueeze(0).transpose(1,3).transpose(2,3).float().to(gpu_id)
     red_source_gradient_tensor, green_source_gradient_tensor, blue_source_gradient_tenosr = laplacian_filter_tensor(source_img_tensor, gpu_id)    
@@ -69,18 +129,34 @@ def compute_gt_gradient(x_start, y_start, source_img, target_img, mask, gpu_id):
     
     # mask and canvas mask
     canvas_mask = np.zeros((target_img.shape[0], target_img.shape[1]))
-    canvas_mask[int(x_start-source_img.shape[0]*0.5):int(x_start+source_img.shape[0]*0.5), int(y_start-source_img.shape[1]*0.5):int(y_start+source_img.shape[1]*0.5)] = mask
+    x1, x2, y1, y2 = int(x_start-source_img.shape[0]*0.5), int(x_start+source_img.shape[0]*0.5), int(y_start-source_img.shape[1]*0.5), int(y_start+source_img.shape[1]*0.5)
+    if x1 < 0:
+        x1 = 0
+        x2 = x1 + source_img.shape[0]
+    if x2 > target_img.shape[0]:
+        x2 = target_img.shape[0]
+        x1 = x2 - source_img.shape[0]
+    if y1 < 0:
+        y1 = 0
+        y2 = y1 + source_img.shape[1]
+    if y2 > target_img.shape[1]:
+        y2 = target_img.shape[1]
+        y1 = y2 - source_img.shape[1]
+    canvas_mask[x1:x2, y1:y2] = mask
+
+    # canvas_mask[int(x_start-source_img.shape[0]*0.5):int(x_start+source_img.shape[0]*0.5), int(y_start-source_img.shape[1]*0.5):int(y_start+source_img.shape[1]*0.5)] = mask
     
-    # foreground gradient
+   # foreground gradient
     red_source_gradient = red_source_gradient * mask
     green_source_gradient = green_source_gradient * mask
     blue_source_gradient = blue_source_gradient * mask
+
     red_foreground_gradient = np.zeros((canvas_mask.shape))
-    red_foreground_gradient[int(x_start-source_img.shape[0]*0.5):int(x_start+source_img.shape[0]*0.5), int(y_start-source_img.shape[1]*0.5):int(y_start+source_img.shape[1]*0.5)] = red_source_gradient
+    red_foreground_gradient[x1:x2, y1:y2] = red_source_gradient
     green_foreground_gradient = np.zeros((canvas_mask.shape))
-    green_foreground_gradient[int(x_start-source_img.shape[0]*0.5):int(x_start+source_img.shape[0]*0.5), int(y_start-source_img.shape[1]*0.5):int(y_start+source_img.shape[1]*0.5)] = green_source_gradient
+    green_foreground_gradient[x1:x2, y1:y2] = green_source_gradient
     blue_foreground_gradient = np.zeros((canvas_mask.shape))
-    blue_foreground_gradient[int(x_start-source_img.shape[0]*0.5):int(x_start+source_img.shape[0]*0.5), int(y_start-source_img.shape[1]*0.5):int(y_start+source_img.shape[1]*0.5)] = blue_source_gradient
+    blue_foreground_gradient[x1:x2, y1:y2] = blue_source_gradient
     
     # background gradient
     red_background_gradient = red_target_gradient * (canvas_mask - 1) * (-1)
@@ -113,7 +189,7 @@ def compute_gt_gradient(x_start, y_start, source_img, target_img, mask, gpu_id):
 class Vgg16(torch.nn.Module):
     def __init__(self, requires_grad=False):
         super(Vgg16, self).__init__()
-        vgg_pretrained_features = models.vgg16(pretrained=True).features
+        vgg_pretrained_features = models.vgg16(weights=models.VGG16_Weights.DEFAULT).features
         self.slice1 = torch.nn.Sequential()
         self.slice2 = torch.nn.Sequential()
         self.slice3 = torch.nn.Sequential()
